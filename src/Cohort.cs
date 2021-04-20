@@ -124,6 +124,8 @@ namespace Landis.Extension.Succession.BiomassPnET
             AdjFracFol = new float[PlugIn.IMAX];
             CiModifier = new float[PlugIn.IMAX];
             DelAmax = new float[PlugIn.IMAX];
+
+            Initialize_CN_Cohort_monthly();//Zhou
         }
 
         public void StoreFRad()
@@ -362,6 +364,7 @@ namespace Landis.Extension.Succession.BiomassPnET
             this.biomass = (uint)(this.nsc/(species.DNSC * species.CFracBiomass));
             
             biomassmax = biomass;
+            Initialize_CN_Cohort(); // ZHOU
 
             // Then overwrite them if you need stuff for outputs
             if (SiteName != null)
@@ -381,6 +384,8 @@ namespace Landis.Extension.Succession.BiomassPnET
             biomassmax = cohort.biomassmax;
             this.fol = cohort.fol;
             this.lastSeasonFRad = cohort.lastSeasonFRad;
+
+            Initialize_CN_Cohort(); // ZHOU
         }
 
         public Cohort(ISpeciesPNET species, ushort age, int woodBiomass, string SiteName, ushort firstYear)
@@ -407,6 +412,8 @@ namespace Landis.Extension.Succession.BiomassPnET
             {
                 InitializeOutput(SiteName, firstYear);
             }
+
+            Initialize_CN_Cohort(); // ZHOU
         }
 
         // Makes sure that litters are allocated to the appropriate site
@@ -548,9 +555,9 @@ namespace Landis.Extension.Succession.BiomassPnET
                     // Release of nsc, will be added to biomass components next year
                     // Assumed that NSC will have a minimum concentration, excess is allocated to biomass
                     float Allocation = Math.Max(nsc - (species.DNSC * FActiveBiom * biomass *species.CFracBiomass), 0); //gC
-                    biomass += Allocation / species.CFracBiomass;  // convert gC to gDW
-                    biomassmax = Math.Max(biomassmax, biomass);
-                    nsc -= Allocation;
+                    //biomass += Allocation / species.CFracBiomass;  // convert gC to gDW
+                    //biomassmax = Math.Max(biomassmax, biomass);
+                    //nsc -= Allocation;   // ZHOU
                     age++;
 
                     //firstDefol = true;
@@ -568,6 +575,9 @@ namespace Landis.Extension.Succession.BiomassPnET
                     float foliageSenescence = FoliageSenescence();
                     addlitter(foliageSenescence, SpeciesPNET);
                     lastFoliageSenescence = foliageSenescence;
+
+                    FolLitM = foliageSenescence;
+                    CNTrans_FolTrans();//Zhou
                 }
                 else
                 {
@@ -580,6 +590,9 @@ namespace Landis.Extension.Succession.BiomassPnET
                             float foliageSenescence = FoliageSenescence();
                             addlitter(foliageSenescence, SpeciesPNET);
                             lastFoliageSenescence = foliageSenescence;
+
+                            FolLitM = foliageSenescence;
+                            CNTrans_FolTrans();//Zhou
                         }
                     }
                     else
@@ -609,6 +622,14 @@ namespace Landis.Extension.Succession.BiomassPnET
 
                             // Subtract from NSC
                             nsc -= Folalloc;
+
+                            FolProdCMo = Folalloc;
+                            float FolGRespMo = Folalloc * species.GRespFrac;
+                            nsc -= FolGRespMo; //FolResp
+
+                            Allocate_Root(); // Zhou
+
+
                         }
                     }
                     else if (ecoregion.Variables.Month == (int)Constants.Months.June) //Apply defoliation only in June
@@ -715,7 +736,8 @@ namespace Landis.Extension.Succession.BiomassPnET
             //adjFolN = (FRad[index] * folN_slope + folN_int) * species.FolN; // Linear reduction (with intercept) in FolN with canopy depth (FRad)
             //adjFolN = (float)Math.Pow((FRad[index]), folN_slope) * species.FolN + species.FolN * folN_int; // Expontential reduction
             // Non-Linear reduction in FolN with canopy depth (FRad)
-            adjFolN = species.FolN + ((maxFolN - species.FolN) * (float)Math.Pow(FRad[index], folN_shape)); //slope is shape parm; FolN is minFolN; intcpt is max FolN. EJG-7-24-18
+         //   adjFolN = species.FolN + ((maxFolN - species.FolN) * (float)Math.Pow(FRad[index], folN_shape)); //slope is shape parm; FolN is minFolN; intcpt is max FolN. EJG-7-24-18
+            adjFolN = species.FolN; //// zhou
 
             AdjFolN[index] = adjFolN;  // Stored for output
             AdjFracFol[index] = adjFracFol; //Stored for output

@@ -389,9 +389,14 @@ namespace Landis.Extension.Succession.BiomassPnET
                     this.canopylaimax = (byte)CanopyLAI;
 
                     //CalculateInitialWater(StartDate);
+
+                    // Initialize CN site variables
+                    Initialize_CN_Site(); //ZHOU
                 }
                 else
                 {
+                    // Initialize CN site variables
+                    Initialize_CN_Site(); //ZHOU
                     SpinUp(StartDate, site, initialCommunity, usingClimateLibrary, SiteOutputName);
                 }
             }
@@ -899,6 +904,7 @@ namespace Landis.Extension.Succession.BiomassPnET
                 //float frostFreeProp = Math.Min(1.0F, frostFreeSoilDepth / Ecoregion.RootingDepth);
 
                 AllCohorts.ForEach(x => x.InitializeSubLayers());
+                //   AllCohorts.ForEach(x => x.Initialize_CN_Cohort_monthly()); // Zhou
 
                 if (Ecoregion.Variables.Prec < 0) throw new System.Exception("Error, this.Ecoregion.Variables.Prec = " + Ecoregion.Variables.Prec + "; ecoregion = " + Ecoregion.Name + "; site = " + Site.Location);
 
@@ -1095,6 +1101,17 @@ namespace Landis.Extension.Succession.BiomassPnET
                 }
                 }
 
+                // CN transformation/translocation ZHOU
+
+
+                Check_NBalance(); // initialize balance check
+                AllCohorts.ForEach(x => x.Allocate_CN());  //ZHOU
+                AllCohorts.ForEach(x => x.CNTrans());
+                Decomp();  // soil decomposition and nitrification //ZHOU
+                Competition_PlantNUptake(); // plant uptake based on biomass // ZHOU
+                NLeach(); //  ZHOU
+
+
                 float LAISum = 0;
                 AllCohorts.ForEach(x =>
                     {
@@ -1181,6 +1198,11 @@ namespace Landis.Extension.Succession.BiomassPnET
 
                     // Calculate AdjFolFrac
                     AllCohorts.ForEach(x => x.CalcAdjFracFol());
+
+                    ////   AllCohorts.ForEach(x => x.AllocateYr());    //zhou  
+                    Competition_MaxNStore();  // allocation of MaxNstore
+                    AllCohorts.ForEach(x => x.AllocateYr()); //ZZX
+                    NH4 += AllCohorts.Sum(x => x.ExcessN); // balance N // ZHOU
 
                     // Filter monthly pest values
                     // This assumes up to 3 months of growing season are relevant for establishment
@@ -2406,7 +2428,33 @@ namespace Landis.Extension.Succession.BiomassPnET
                         OutputHeaders.SubCanopyPAR+","+
                         OutputHeaders.SoilDiffusivity+","+
                         OutputHeaders.FrostDepth+","+
-                        OutputHeaders.LeakageFrac;
+                        OutputHeaders.LeakageFrac
+                        + "," + "WoodMass"
+                        + "," + "TotalBiomass"
+                        + "," + "HOM"
+                        + "," + "HON"
+                        + "," + "SoilDecResp"
+                        +"," + "GrossNMin"
+                        +"," + "NetNMin" 
+                        +"," + "NRatioNit"
+                        +"," + "NetNitr" 
+                        +"," + "NDrain" 
+                        +"," + "NdepTot"
+                        +"," + "NPoolTot"
+                        +"," + "NetN" 
+                        +"," + "RootNSink"
+                        +"," + "PlantNSite"
+                        +"," + "LitterMSite"
+                        +"," + "LitterNSite" 
+                        +"," + "Canopy%N" 
+                        +"," + "NRatioSite" 
+                        +"," + "LitFolNSite" 
+                        +"," + "LitRootNSite" 
+                        +"," + "LitWoodNSite" 
+                        +"," + "Litter%NSite"
+
+
+                        ;
 
             return s;
         }
@@ -2461,7 +2509,32 @@ namespace Landis.Extension.Succession.BiomassPnET
                         subcanopypar +","+
                         soilDiffusivity + ","+
                         (topFreezeDepth*1000)+","+
-                        leakageFrac;
+                        leakageFrac
+                        + "," + cohorts.Values.Sum(o => o.Sum(x => x.WoodMass))
+                        + "," + cohorts.Values.Sum(o => o.Sum(x => x.TotalBiomass))
+                        +"," + HOM 
+                        +"," + HON 
+                        +"," + SoilDecResp
+                        +"," + GrossNMin 
+                        +"," + NetNMin 
+                        +"," + NRatioNit
+                        +"," + NetNitr 
+                        +"," + NDrain
+                        +"," + NdepTot
+                        +"," + NPools_Site 
+                        +"," + NPools_MonNet
+                        +"," + RootNSink 
+                        +"," + PlantNSite
+                        +"," + LitterMSite 
+                        +"," + LitterNSite 
+                        +"," + CanopyNCon * 100.0f 
+                        +"," + NRatioSite 
+                        +"," + LitFolNSite 
+                        +"," + LitRootNSite 
+                        +"," + LitWoodNSite 
+                        +"," + LitterNSite / LitterMSite
+
+                        ;
            
             this.siteoutput.Add(s);
         }
@@ -2498,10 +2571,515 @@ namespace Landis.Extension.Succession.BiomassPnET
 
              
         }
-       
+
+
+        /// <summary>
+        /// CN functions at site level   //ZHOU
+        /// </summary>
+        public void Competition_MaxNStore()
+        {
+
+            //Distribution based on the biomass, get the weighted MaxNStore, which is a site level attribute.
+
+            AllCohorts.ForEach(x =>
+            {
+                x.BiomassWeight = x.Biomass / BiomassSite;
+                x.MaxNStoreWeighted = x.MaxNStore * x.BiomassWeight;
+
+            });
+            MaxNStoreSite = AllCohorts.Sum(x => x.MaxNStoreWeighted);
+        }
+        public float MaxNStoreSite
+        { get; set; }
+
+
+        public float PlantNUptakeSite
+        { get; set; }
+
+        public float PlantNSite
+        {
+            get
+            {
+                return AllCohorts.Sum(o => o.PlantN);
+            }
+            set {; }
+        }
+
+
+
+
+        public void Competition_PlantNUptake()
+        {
+            float NH4Up, NO3Up;
+
+            //NH4 += AllCohorts.Sum(x => x.ExcessN);
+
+            // MaxNStoreSite = 21.0f;
+
+            ////Plant Uptake Distribution, based on the biomass
+
+            // float BiomassSite = AllCohorts.Sum(o => o.Biomass);
+            for (int i = 0; i < AllCohorts.Count(); i++)
+            {
+                AllCohorts[i].BiomassWeight = AllCohorts[i].Biomass / AbovegroundBiomassSum;
+                AllCohorts[i].RootNSinkStrWeighted = AllCohorts[i].RootNSinkStr * AllCohorts[i].BiomassWeight;
+
+
+            }
+
+
+            //AllCohorts.ForEach(x =>
+            //{
+            //    x.PlantNUptakeWeight = x.Biomass / TotBiomass;
+            //    x.RootNSinkStrWeighted = x.RootNSinkStr * x.PlantNUptakeWeight;
+
+            //});
+
+            RootNSink = AllCohorts.Sum(o => o.RootNSinkStrWeighted);
+
+            AllCohorts.ForEach(x =>
+            {
+                x.PlantNUptakeWeight = x.RootNSinkStrWeighted / RootNSink;
+
+            });
+            if (RootNSink < 0) RootNSink = 0;
+            if (RootNSink > 1) RootNSink = 1.0f;
+
+            PlantNUptakeSite = (NH4 + NO3) * RootNSink;
+
+            //   float PlantNSite = AllCohorts.Sum(o => o.PlantN);
+
+            if ((PlantNUptakeSite + PlantNSite) > MaxNStoreSite)
+            {
+                PlantNUptakeSite = MaxNStoreSite - PlantNSite;
+                RootNSink = PlantNUptakeSite / (NO3 + NH4);
+            }
+            if (PlantNUptakeSite < 0)
+            {
+                PlantNUptakeSite = 0;
+                RootNSink = 0;
+            }
+
+            for (int i = 0; i < AllCohorts.Count(); i++)
+            {
+                AllCohorts[i].PlantNUptake = PlantNUptakeSite * AllCohorts[i].PlantNUptakeWeight;
+                AllCohorts[i].PlantN += AllCohorts[i].PlantNUptake;
+
+            }
+
+            //PlantNUptakeYr = PlantNUptakeYr + PlantNUptake;
+
+            NH4Up = NH4 * RootNSink;
+            NH4 = NH4 - NH4Up;
+            NO3Up = NO3 * RootNSink;
+            NO3 = NO3 - NO3Up;
+        }
+
+        public float RootNSink
+        { get; set; }
+
+        public float NO3
+        { get; set; }
+
+        public float NH4
+        { get; set; }
+
+        public float HOM
+        { get; set; }
+
+        public float HON
+        { get; set; }
+
+        public float GrossNMin
+        { get; set; }
+
+        public float SoilDecResp
+        { get; set; }
+
+        public float GrossNMinYr
+        { get; set; }
+        public float GrossNImmobYr
+        { get; set; }
+
+        public float NetNMinYr
+        { get; set; }
+        public float NetNitrYr
+        { get; set; }
+        public float NetNMin
+        { get; set; }
+        public float NetNitr
+        { get; set; }
+
+
+        public float LitterMSite
+        {
+            get
+            {
+
+                return LitFolSite + LitRootSite + LitWoodSite;
+            }
+
+        }
+        public float LitFolSite
+        {
+            get
+            {
+                return AllCohorts.Sum(o => o.FolLitM);
+
+            }
+
+        }
+        public float LitWoodSite
+        {
+            get
+            {
+                return AllCohorts.Sum(o => o.WoodTransM);
+
+            }
+
+        }
+        public float LitRootSite
+        {
+            get
+            {
+                return AllCohorts.Sum(o => o.RootLitM);
+
+            }
+
+        }
+        public float LitterNSite
+        {
+            get
+            {
+                float LitFolN = AllCohorts.Sum(o => o.FolLitN);
+                float LitRootN = AllCohorts.Sum(o => o.RootLitN);
+                float LitWoodN = AllCohorts.Sum(o => o.WoodTransN);
+                return LitFolN + LitRootN + LitWoodN;
+            }
+
+        }
+
+        public float LitFolNSite
+        {
+            get
+            {
+                float dummy;
+                dummy = FolLitMSite;
+                return AllCohorts.Sum(o => o.FolLitN);
+
+            }
+
+        }
+
+        public float FolLitMSite
+        {
+            get
+            {
+                return AllCohorts.Sum(o => o.FolLitM);
+
+            }
+
+        }
+        public float LitRootNSite
+        {
+            get
+            {
+
+                return AllCohorts.Sum(o => o.RootLitN);
+
+            }
+
+        }
+        public float LitWoodNSite
+        {
+            get
+            {
+
+                return AllCohorts.Sum(o => o.WoodTransN);
+
+            }
+
+        }
+
+        public float BiomassSite
+        {
+            get
+            {
+                return AllCohorts.Sum(o => o.Biomass);
+            }
+
+        }
+        public float NRatioNit
+        {
+            get
+            {
+                // float TotBiomass = AllCohorts.Sum(o => o.Biomass);
+                for (int i = 0; i < AllCohorts.Count(); i++)
+                {
+                    AllCohorts[i].NitWeight = AllCohorts[i].Biomass / BiomassSite;
+                }
+
+                float SoilNit = AllCohorts.Sum(o => (o.NRatioNit * o.NitWeight));
+                if (SoilNit < 0) SoilNit = 0;
+                if (SoilNit > 1) SoilNit = 1.0f;
+
+                return SoilNit;
+
+            }
+
+        }
+
+
+
+        // soil decomposition
+        public void Decomp()
+        {
+            //
+            //PnET-CN decomposition routine
+            //
+
+            float TMult, KhoAct, DHO, SoilPctN, NReten, GrossNImmob;
+            float WMult;
+
+
+            //            NO3dep = 0.385f; // gN/m2
+            //            NH4dep = 0.192f; // gN/m2
+            ////Add atmospheric N deposition
+            NO3 = NO3 + NO3dep;
+            NH4 = NH4 + NH4dep;
+
+
+            ////Temperature effect on all soil processes
+
+
+            TMult = (float)Math.Exp(0.1f * (Ecoregion.Variables.Tave - 7.1f)) * 0.68f;
+            //WMult = share->MeanSoilMoistEff;
+            WMult = 1.0f;
+
+            ////Add litter to Humus pool
+
+            HOM = HOM + LitterMSite;
+            HON = HON + LitterNSite;
+
+            ////Humus dynamics
+            ///
+            float Kho = 0.075f;
+            float CFracBiomass = 0.45f;
+
+            KhoAct = Kho / 12.0f;
+            DHO = HOM * (float)(1.0 - Math.Exp(-KhoAct * TMult * WMult));
+            GrossNMin = DHO * (HON / HOM);
+            SoilDecResp = DHO * CFracBiomass;
+
+            GrossNMinYr = GrossNMinYr + GrossNMin;
+            HON = HON - GrossNMin;
+            HOM = HOM - DHO;
+
+            float NImmobA = 151;
+            float NImmobB = -35;
+
+            ////Immobilization and net mineralization
+            SoilPctN = (HON / HOM) * 100f;
+            NReten = (NImmobA + NImmobB * SoilPctN) / 100f;
+            //           if (NReten < 0) NReten = 0.0f;
+            //           if (NReten >1) NReten = 1.0f;
+            GrossNImmob = NReten * GrossNMin;
+            HON = HON + GrossNImmob;
+            //GrossNImmobYr =GrossNImmobYr + GrossNImmob;
+            NetNMin = GrossNMin - GrossNImmob;
+
+            NH4 = NH4 + NetNMin;
+            NetNitr = (NH4 * NRatioNit);
+            NO3 = NO3 + NetNitr;
+            NH4 = NH4 - NetNitr;
+
+            NetNMinYr = NetNMinYr + NetNMin;
+            NetNitrYr = NetNitrYr + NetNitr;
+
+
+        }
+        public float NDrain
+        { get; set; }
+
+        public float FracDrain
+        { get; set; }
+        public float Drainage
+        { get { return Hydrology.Leakage; } set {; } }
+        public float NDrainMgL
+        { get; set; }
+
+        public void NLeach()
+        {
+            //
+            //PnET-CN leaching routine
+            //
+            FracDrain = (float)(Drainage / (hydrology.Water + Ecoregion.Variables.Prec));
+            NDrain = FracDrain * NO3;
+            //           share->NDrainYr = share->NDrainYr + share->NDrain;
+            NDrainMgL = (NDrain * 1000f) / (Drainage * 10f + 1.0E-6f);  //to convert to mg/l
+            NO3 = NO3 - NDrain;
+
+        }
+
+        public void Initialize_CN_Site()
+        {
+            //
+            HOM = 13502.9f;
+            HON = 385.0f;
+            NH4 = 0.5f;
+            NO3 = 0.1f;
+
+            // need to replace for input 
+            float ndepfactor;
+            ndepfactor = 1.0f;
+            NO3dep = 0.0385f * ndepfactor; // gN/m2
+            NH4dep = 0.0192f * ndepfactor; // gN/m2
+
+        }
+        public float NetNMinLastYr
+        { get; set; }
+        public void Initialize_Yr_Site()
+        {
+            //
+            NetNMinLastYr = NetNMinYr;
+            NetNMinYr = 0.0f;
+
+        }
+        public float CanopyNCon // decimal of foliar N concentration
+        {
+            get
+            {
+                float CanopyBiomass, CanopyTotalN;
+                CanopyBiomass = AllCohorts.Sum(o => o.CanopyTotMass);
+                CanopyTotalN = AllCohorts.Sum(o => o.CanopyTotN);
+                return CanopyTotalN / CanopyBiomass;
+            }
+            set {; }
+        }
+        public float NRatioSite
+        {
+            get
+            {
+                float PlantNTot, MaxNStoreTot;
+
+
+                PlantNTot = AllCohorts.Sum(o => ((o.NRatio - 1.0f) / 0.6f * o.MaxNStoreWeighted));
+                MaxNStoreTot = AllCohorts.Sum(x => x.MaxNStoreWeighted);
+                return 1.0f + (PlantNTot / MaxNStoreTot) * 0.6f;
+            }
+            set {; }
+        }
+
+        // // check ecosystem N balance
+
+        public float CanopyNSite  // includes BudN
+        {
+            get
+            {
+                return AllCohorts.Sum(o => o.CanopyTotN);
+            }
+            set {; }
+        }
+
+        public float BudNSite
+        {
+            get
+            {
+                return AllCohorts.Sum(o => o.BudN);
+            }
+            set {; }
+        }
+        public float WoodNSite
+        {
+            get
+            {
+                return AllCohorts.Sum(o => o.WoodMassN);
+            }
+            set {; }
+        }
+
+        public float DWoodNSite
+        {
+            get
+            {
+                return AllCohorts.Sum(o => o.DeadWoodN);
+            }
+            set {; }
+        }
+
+        public float RootNSite
+        {
+            get
+            {
+                return AllCohorts.Sum(o => o.RootMassN);
+            }
+            set {; }
+        }
+
+        public float NdepTot  // input N
+        {
+            get
+            {
+                return NO3dep + NH4dep;
+            }
+            set {; }
+        }
+
+        public float NO3dep  // input N
+        { get; set; }
+
+        public float NH4dep  // input N
+        { get; set; }
+
+
+        public float NPools_YrStart  // initial N pools
+        { get; set; }
+
+
+
+        public float NPools_Site  // initial N pools
+        {
+            get
+            {
+                return HON + NH4 + NO3 + CanopyNSite + WoodNSite + RootNSite + PlantNSite + DWoodNSite;
+            }
+            set {; }
+        }
+
+        public float NPools_YrEnd  // N pools at the end of year
+        { get; set; }
+
+        public float NPools_YrNet  // yearly balance
+        {
+            get
+            {
+                return NPools_YrEnd - NPools_YrStart;
+            }
+            set {; }
+        }
+        public float NPools_MonNet // Monthly balance
+        {
+            get
+            {
+                return NPools_Site - NPools_YrStart - NdepTot + NDrain;
+            }
+            set {; }
+        }
+
+        public void Check_NBalance()
+        {
+            //
+            NPools_YrStart = NPools_Site;  // get current values before N cycling zz
+
+        }
+
 
     }
 
 
+
 }
+
+
+
 
