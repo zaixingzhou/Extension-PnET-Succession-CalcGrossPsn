@@ -76,6 +76,7 @@ namespace Landis.Extension.Succession.BiomassPnET
         List<int> CohortsByFire { get; set; }
         List<int> CohortsByWind { get; set; }
         List<int> CohortsByOther { get; set; }
+        
 
     }
 }
