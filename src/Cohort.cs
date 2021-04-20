@@ -1083,8 +1083,17 @@ namespace Landis.Extension.Succession.BiomassPnET
                        AdjFracFol.Average() + "," +
                        CiModifier.Average() + ","+
                        adjHalfSat + ","+
-                       limitingFactor+",";
-             
+                       limitingFactor+","+
+                       MaxNStoreWeighted + "," +
+                       PlantN + ","
+                       + NRatio + ","
+                       // + WPctN + ","
+                       + (WoodMassN / WoodMass) + ","
+                       + (RootMassN / RootMass) + ","
+
+                       //+ RPctN + ","
+                       ;
+
             cohortoutput.Add(s);
 
        
@@ -1127,7 +1136,14 @@ namespace Landis.Extension.Succession.BiomassPnET
                             OutputHeaders.AdjFracFol + "," +
                             OutputHeaders.CiModifier + ","+
                             OutputHeaders.AdjHalfSat + ","+
-                            OutputHeaders.LimitingFactor + ",";
+                            OutputHeaders.LimitingFactor + ","
+
+                            + "MaxNStoreWeighted" + ","
+                            + "PlantN" + ","
+                            + "NRatio" + ","
+                            + "WPctN " + ","
+                            + "RPctN " + ","
+;
 
                 return hdr;
             }
@@ -1235,6 +1251,479 @@ namespace Landis.Extension.Succession.BiomassPnET
            
         }
 
-        
+        /// <summary>
+        ///    CN functions at cohort level   //ZHOU
+        /// </summary>
+
+
+        public float PlantN
+        { get; set; }
+
+        public float NRatio
+        { get; set; }
+
+        public float BudN
+        { get; set; }
+
+        public float BudC
+        { get; set; }
+
+        public float NRatioNit
+        { get; set; }
+
+        public float RootNSinkEff
+        { get; set; }
+
+        public float RootMass
+        { get; set; }
+
+
+        public float RootMassN
+        { get; set; }
+
+        public float WoodMass
+        {
+            get
+            {
+                return biomass;
+            }
+            set
+            { biomass = value; }
+        }
+
+        public float WoodMassN
+        { get; set; }
+
+
+        public float DeadWoodM
+        { get; set; }
+
+        public float DeadWoodN
+        { get; set; }
+
+        public float WoodDecResp
+        { get; set; }
+
+        public float FolLitM
+        { get; set; }
+
+        public float FolLitN
+        { get; set; }
+        public float RootC
+        { get; set; }
+
+        //public float PlantC
+        //{ 
+        //    get
+        //    {return nsc;} 
+        //    set
+        //    {nsc =value;} 
+        //}
+
+        public float ExcessN
+        { get; set; }
+
+
+        public void AllocateYr_Wood()
+        {
+            float PlantCReserveFrac = 0.75f;
+            WoodC = Math.Max(nsc - (species.DNSC * FActiveBiom * biomass), 0);  //Old
+            nsc -= WoodC;  // ZZX 
+                           //           WoodC = (1.0f - PlantCReserveFrac) * nsc;
+                           //           nsc = nsc - WoodC;
+
+
+        }
+
+        public void AllocateYr_Bud()  //Annual C/N allocation for the PnET ecosystem model.
+        {
+
+            if (PlantN > MaxNStoreWeighted)
+            {
+                ExcessN = (PlantN - MaxNStoreWeighted);  //
+                PlantN = MaxNStoreWeighted;
+            }
+
+            // PlantN = MaxNStoreWeighted / 2.0f;  //// Test zhou
+
+
+
+            NRatio = 1.0f + (PlantN / MaxNStoreWeighted) * species.FolNConRange;
+
+            if (NRatio < 1.0)
+            {
+                NRatio = 1.0f;
+            }
+
+            if (NRatio > (1.0 + species.FolNConRange))
+            {
+                NRatio = 1.0f + species.FolNConRange;
+            }
+
+
+            BudC = (adjFracFol * FActiveBiom * biomass) * species.CFracBiomass; //  Could be replaced with PnET algorithm
+            BudN = (BudC / species.CFracBiomass) * species.FLPctN * (1 / (1 - species.FolNRetrans)) * NRatio;
+            if (BudN > PlantN)
+            {
+                if (PlantN < 0.01)
+                {
+                    BudC = BudC * 0.1f;
+                    BudN = BudN * 0.1f;
+                }
+
+                else
+                {
+                    BudC = BudC * (PlantN / BudN);
+                    BudN = BudN * (PlantN / BudN);
+                }
+            }
+
+            CanopyTotN = fol * (species.FolN / 100) + BudN;
+            CanopyTotMass = fol + (BudC / species.CFracBiomass);
+            //float  folnconnew = (fol * (species.FolN / 100) + BudN) / (fol + (BudC / species.CFracBiomass)) * 100;
+            float folnconnew = CanopyTotN / CanopyTotMass * 100;
+            species.FolN = folnconnew;
+
+
+            RPctN = species.RLPctN * NRatio; // decimal
+            WPctN = species.WLPctN * NRatio; // decimal
+
+            PlantN = -BudN;
+            if (PlantN < 0.0f) PlantN = 0.0f;
+
+
+
+        }
+
+        public float CanopyTotN
+        { get; set; }
+        public float CanopyTotMass
+        { get; set; }
+
+        // Root update ability for N relative to the available soil N pools (NH4+NO3), 0-1.
+        public void RootNSink()
+        {
+
+            RootNSinkEff = (float)Math.Sqrt(1 - (PlantN / MaxNStoreWeighted));
+            float TMult = (float)Math.Exp(0.1f * (ecoregion.Variables.Tave - 7.1f)) * 0.68f;
+            RootNSinkStr = (float)(Math.Min((RootNSinkEff * TMult), 0.98));
+
+        }
+
+
+        public float BiomassWeight
+        { get; set; }
+        public float NitWeight
+        { get; set; }
+        public float RootNSinkStr
+        { get; set; }
+
+        public float RootNSinkStrWeighted
+        { get; set; }
+
+        public float MaxNStoreWeight
+        { get; set; }
+        public float MaxNStoreWeighted
+        { get; set; }
+        public float MaxNStore
+        { get { return species.MaxNStore; } set {; } }
+        public float RootNSinkWeight
+        { get; set; }
+        public float PlantNUptakeWeight
+        { get; set; }
+
+        public float PlantNUptake
+        { get; set; }
+
+        // nitrification rate relative to the available soil N pools (NH4), 0-1.
+        public void NRatioNitEff()  //
+        {
+            float nr = NRatio - 1 - (species.FolNConRange / 3);
+            if (nr < 0) nr = 0;
+
+            NRatioNit = (nr / (0.6667f * species.FolNConRange)) * (nr / (0.6667f * species.FolNConRange));
+            if (NRatioNit > 1) NRatioNit = 1;
+
+        }
+        public float WoodTransM  // wood litter
+        { get; set; }
+        public float WoodTransN
+        { get; set; }
+        public void CNTrans_WoodTurnover()
+        {
+            //
+            //Carbon and nitrogen translocation routine
+            //
+
+            float WoodMassLoss, WoodLitM, WoodLitN;
+
+            float WoodTurnover = 0.025f;
+            float WoodLitLossRate = 0.1f; //    
+            float WoodLitCLoss = 0.8f; //  
+
+
+            //   WoodMass = biomass;
+
+
+            WoodLitM = WoodMass * WoodTurnover / 12.0f; //Matlab to C
+            WoodLitN = WoodMassN * WoodTurnover / 12.0f; //Matlab to C
+            WoodMass = WoodMass - WoodLitM;
+            WoodMassN = WoodMassN - WoodLitN;
+
+            //   biomass = WoodMass;  // IMPROVE
+
+
+            DeadWoodM = DeadWoodM + WoodLitM;
+            DeadWoodN = DeadWoodN + WoodLitN;
+            WoodMassLoss = DeadWoodM * WoodLitLossRate / 12.0f; //Matlab to C
+            WoodTransM = WoodMassLoss * (1.0f - WoodLitCLoss);  // wood litter
+            WoodDecResp = (WoodMassLoss - WoodTransM) * species.CFracBiomass; // loss as CO2
+
+            WoodTransN = (WoodMassLoss / DeadWoodM) * DeadWoodN;
+            DeadWoodM = DeadWoodM - WoodMassLoss;
+            DeadWoodN = DeadWoodN - WoodTransN;
+
+        }
+
+        public void CNTrans_FolTrans()
+        {
+            //
+            //Carbon and nitrogen translocation routine
+            //
+
+            float FolNLoss, Retrans;
+
+            FolNLoss = FolLitM * (species.FolN / 100.0f);
+            Retrans = FolNLoss * species.FolNRetrans;
+            PlantN = PlantN + Retrans;
+            FolLitN = FolNLoss - Retrans;
+
+        }
+        public float RootLitM
+        { get; set; }
+        public float RootLitN
+        { get; set; }
+
+
+        public void CNTrans_RootTurnover()
+        {
+            //
+            //Carbon and nitrogen translocation routine
+            //
+
+            float RootTurnover;
+
+            float RootTurnoverA = 0.789f;
+            float RootTurnoverB = 0.191f;
+            float RootTurnoverC = 0.021f;
+            float NetNMinLastYr = 10.0f; //    gN/m2
+
+
+            RootTurnover = RootTurnoverA - (RootTurnoverB * NetNMinLastYr) + (RootTurnoverC * (float)Math.Pow(NetNMinLastYr, 2)); //Matlab to C
+            if (RootTurnover > 2.5)
+            {
+                RootTurnover = 2.5f;
+            }
+            if (RootTurnover < 0.1)
+            {
+                RootTurnover = 0.1f;
+            }
+            RootTurnover = RootTurnover / 12.0f; // Yearly to monthly
+
+            RootLitM = RootMass * RootTurnover;
+            RootLitN = RootLitM * (RootMassN / RootMass);
+            RootMass = RootMass - RootLitM;
+            RootMassN = RootMassN - RootLitN;
+
+
+        }
+
+
+        public float FolProdCMo
+        { get; set; }
+        public float RPctN
+        { get; set; }
+
+
+        public void Allocate_Root()
+        {
+            //
+            // Root allocation for the PnET ecosystem model.
+            //
+
+            float TMult, RootCAdd, RootAllocCMo, RootProdCMo, RootMRespMo, RootGRespMo;
+
+
+            float RootAllocA = 0.0f;
+            float RootAllocB = 2.0f;
+            float RootMRespFrac = 1.0f;
+
+            TMult = (float)Math.Exp(0.1 * (ecoregion.Variables.Tave - 7.1)) * 0.68f; // annual rate
+
+            RootCAdd = RootAllocA / 12.0f + RootAllocB * FolProdCMo;
+            RootC = RootC + RootCAdd;
+            RootAllocCMo = TMult / 12.0f;   //
+            if (RootAllocCMo > 1.0) RootAllocCMo = 1.0f;
+
+            RootAllocCMo = RootAllocCMo * RootC;
+
+            RootC = RootC - RootAllocCMo;
+            RootProdCMo = RootAllocCMo / (1.0f + RootMRespFrac + species.GRespFrac);
+
+            RootMRespMo = RootProdCMo * RootMRespFrac;
+            RootGRespMo = RootProdCMo * species.GRespFrac;
+
+
+            nsc -= RootCAdd + RootMRespMo + RootGRespMo; //ZZX
+            float RootProdMass = RootProdCMo / species.CFracBiomass;
+            RootMass = RootMass + RootProdMass;
+
+            float RootProdMassN = RootProdMass * RPctN;
+
+            if (PlantN < RootProdMassN)
+            {
+                RootProdMassN = PlantN;
+
+            }
+            RootMassN = RootMassN + RootProdMassN;
+            PlantN = PlantN - RootProdMassN;
+            ////  share->NetCBal = share->NetPsnMo - WoodMRespMo - WoodGRespMo - share->FolGRespMo - RootMRespMo - RootGRespMo;
+            // needs -share->SoilDecResp - share->WoodDecResp, and will be updated in the respective routine.
+
+
+
+        }
+
+        public float WPctN
+        { get; set; }
+
+        public float WoodC
+        { get; set; }
+
+        public void Allocate_Wood()
+        {
+            //
+            // C allocation for the PnET ecosystem model.
+            //
+
+            float WoodProdCMo, WoodGRespMo;
+
+            //float WoodMRespMo, GDDWoodEff, delGDDWoodEff;
+            //if (share->GDDTot >= veg->GDDWoodStart)
+            //{
+            //    GDDWoodEff = (share->GDDTot - veg->GDDWoodStart) / (veg->GDDWoodEnd - veg->GDDWoodStart);
+            //    if (GDDWoodEff > 1.0) GDDWoodEff = 1;
+            //    if (GDDWoodEff < 0) GDDWoodEff = 0;
+
+            //    delGDDWoodEff = GDDWoodEff - share->OldGDDWoodEff;
+            //    WoodProdCMo = share->WoodC * delGDDWoodEff;
+            //    WoodGRespMo = WoodProdCMo * veg->GRespFrac;
+            //    share->WoodProdCYr = share->WoodProdCYr + WoodProdCMo;
+            //    share->WoodGRespYr = share->WoodGRespYr + WoodGRespMo;
+            //    share->OldGDDWoodEff = GDDWoodEff;
+            //}
+            //else
+            //{
+            //    WoodProdCMo = 0;
+            //    WoodGRespMo = 0;
+            //}
+
+            WoodProdCMo = WoodC;
+            WoodGRespMo = WoodProdCMo * species.GRespFrac;
+
+            nsc -= WoodGRespMo;   // ZZX
+            float WoodProdMass = WoodProdCMo / species.CFracBiomass;
+            WoodMass = WoodMass + WoodProdMass;
+
+            float WoodProdMassN = WoodProdMass * WPctN;
+
+
+            if (PlantN < WoodProdMassN)
+            {
+                WoodProdMassN = PlantN;
+
+            }
+            WoodMassN = WoodMassN + WoodProdMassN;
+            PlantN = PlantN - WoodProdMassN;
+
+            biomassmax = Math.Max(biomassmax, biomass); // ZZHOU
+        }
+
+
+        public void Allocate_CN()  // monthly
+        {
+
+            if (ecoregion.Variables.Month == (int)Constants.Months.June) Allocate_Wood();// only occur once in June
+
+
+
+        }
+
+
+        public void CNTrans()  // monthly
+        {
+
+
+            // CNTrans_FolTrans();
+            CNTrans_RootTurnover();
+            CNTrans_WoodTurnover();  // biomass and WoodMass connected
+
+        }
+
+        public void AllocateYr() // call at the end of year to estimate foliage and wood growth and N processes
+        {
+            if (ecoregion.Variables.Month == (int)Constants.Months.December)
+            {
+
+                // calculate wood growth for next year. one-year off.
+                AllocateYr_Wood();
+
+                // calculate leaf growth and N stress
+                AllocateYr_Bud();
+
+                // calculate Root N update potential
+                RootNSink();
+
+                // calculate soil Nitrification potential
+                NRatioNitEff();
+            }
+
+
+
+        }
+
+        public void Initialize_CN_Cohort()
+        {
+            RootMass = 10.0f;
+            RootMassN = RootMass * species.RLPctN;
+            WoodC = 0.01f * WoodMass;
+            RootC = 0.005f * WoodMass;
+            WoodMassN = species.WLPctN * WoodMass;
+
+            DeadWoodM = 0.4f * WoodMass;
+            DeadWoodN = species.WLPctN * DeadWoodM;
+            BudC = 0.005f * WoodMass;
+            BudN = BudC * 0.04f;// 6.0f;//BudC *species.FolN *2.0f;  //
+            PlantN = BudN * 1.6f;//10.0f; // BudN *1.6f; 
+            MaxNStoreWeighted = PlantN * 2.0f;//20f;
+            RPctN = species.RLPctN * 1.3f; // decimal
+            WPctN = species.WLPctN * 1.3f; // decimal
+            RootNSinkStr = (float)Math.Sqrt(0.5f) * 0.68f;
+            // nsc = 1000f;
+            FolLitM = 0.0f;
+            FolLitN = 0.0f;
+
+
+        }
+
+        public void Initialize_CN_Cohort_monthly()
+        {
+            FolLitM = 0.0f;
+            FolLitN = 0.0f;
+
+        }
+
+
+
     } 
 }
