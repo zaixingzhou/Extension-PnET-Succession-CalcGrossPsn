@@ -2532,7 +2532,7 @@ namespace Landis.Extension.Succession.BiomassPnET
                         +"," + LitFolNSite 
                         +"," + LitRootNSite 
                         +"," + LitWoodNSite 
-                        +"," + LitterNSite / LitterMSite
+                        +"," + LitterNSite/LitterMSite
 
                         ;
            
@@ -2914,7 +2914,10 @@ namespace Landis.Extension.Succession.BiomassPnET
             //PnET-CN leaching routine
             //
             FracDrain = (float)(Drainage / (hydrology.Water + Ecoregion.Variables.Prec));
+            if (FracDrain > 1.0f) FracDrain = 1.0f;
             NDrain = FracDrain * NO3;
+            NDrain = 0.4f * (NO3dep + NH4dep);
+            if (NDrain > NO3) NDrain = NO3;
             //           share->NDrainYr = share->NDrainYr + share->NDrain;
             NDrainMgL = (NDrain * 1000f) / (Drainage * 10f + 1.0E-6f);  //to convert to mg/l
             NO3 = NO3 - NDrain;

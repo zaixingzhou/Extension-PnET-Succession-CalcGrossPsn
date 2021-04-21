@@ -1208,7 +1208,7 @@ namespace Landis.Extension.Succession.BiomassPnET
         public float Senescence()
         {
             float senescence = ((Root * species.TOroot) + Wood * species.TOwood);
-            biomass -= senescence;
+          //  biomass -= senescence; // ZHOU
 
             return senescence;
         }
@@ -1349,7 +1349,7 @@ namespace Landis.Extension.Succession.BiomassPnET
         public void AllocateYr_Wood()
         {
             float PlantCReserveFrac = 0.75f;
-            WoodC = Math.Max(nsc - (species.DNSC * FActiveBiom * biomass), 0);  //Old
+            WoodC = Math.Max(nsc - (species.DNSC * FActiveBiom * biomass * species.CFracBiomass), 0);  //Old
             nsc -= WoodC;  // ZZX 
                            //           WoodC = (1.0f - PlantCReserveFrac) * nsc;
                            //           nsc = nsc - WoodC;
@@ -1366,7 +1366,7 @@ namespace Landis.Extension.Succession.BiomassPnET
                 PlantN = MaxNStoreWeighted;
             }
 
-            // PlantN = MaxNStoreWeighted / 2.0f;  //// Test zhou
+           // PlantN = MaxNStoreWeighted / 2.0f;  //// Test zhou
 
 
 
@@ -1410,7 +1410,7 @@ namespace Landis.Extension.Succession.BiomassPnET
             RPctN = species.RLPctN * NRatio; // decimal
             WPctN = species.WLPctN * NRatio; // decimal
 
-            PlantN = -BudN;
+            PlantN = PlantN-BudN;
             if (PlantN < 0.0f) PlantN = 0.0f;
 
 
